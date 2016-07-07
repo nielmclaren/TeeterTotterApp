@@ -51,14 +51,15 @@ Adafruit_LIS3DH lis = Adafruit_LIS3DH();
    #define Serial SerialUSB
 #endif
 
-const int ledsPerStrip = 29;
+const int numLedsPerStrip = 29;
+const int numStrips = 6;
 
-DMAMEM int displayMemory[ledsPerStrip*6];
-int drawingMemory[ledsPerStrip*6];
+DMAMEM int displayMemory[numLedsPerStrip * numStrips];
+int drawingMemory[numLedsPerStrip * numStrips];
 
 const int config = WS2811_GRB | WS2811_800kHz;
 
-OctoWS2811 leds(ledsPerStrip, displayMemory, drawingMemory, config);
+OctoWS2811 leds(numLedsPerStrip, displayMemory, drawingMemory, config);
 
 void setup(void) {
 #ifndef ESP8266
@@ -84,54 +85,41 @@ void setup(void) {
 }
 
 void loop() {
-  //lis.read();      // get X Y and Z data at once
-  // Then print out the raw data
-  /*
-  Serial.print("X:  "); Serial.print(lis.x); 
-  Serial.print("  \tY:  "); Serial.print(lis.y); 
-  Serial.print("  \tZ:  "); Serial.print(lis.z); 
-  */
-  /* Or....get a new sensor event, normalized */ 
   sensors_event_t event; 
   lis.getEvent(&event);
   
-  /* Display the results (acceleration is measured in m/s^2) */
-  /*
-  Serial.print("\t\tX: "); Serial.print(event.acceleration.x);
-  Serial.print(" \tY: "); Serial.print(event.acceleration.y); 
-  Serial.print(" \tZ: "); Serial.print(event.acceleration.z); 
-  Serial.println(" m/s^2 ");
-
-  Serial.println();
-  */
-  float fractionX = event.acceleration.x / 9.8;
+  float fractionX = event.acceleration.x / 10;
+  Serial.print(event.acceleration.x);
+  Serial.print("    ");
   Serial.println(fractionX);
-  for (int i=0; i < leds.numPixels(); i++) {
-    int color;
-    float fractionLed = (float)i / leds.numPixels();
-    
-    if (fractionX < 0) {
-      if (-fractionLed < fractionX) {
-        color = RED;
+  for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
+    for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
+      int color;
+      float fractionLed = (float)ledIndex / numLedsPerStrip;
+      
+      if (fractionX < 0) {
+        if (fractionLed < -fractionX) {
+          color = RED;
+        }
+        else {
+          color = BLACK;
+        }
       }
       else {
-        color = BLACK;
+        if (fractionLed < fractionX) {
+          color = GREEN;
+        }
+        else {
+          color = BLACK;
+        }
       }
+      
+      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, color);
+      leds.show();
     }
-    else {
-      if (fractionLed < fractionX) {
-        color = GREEN;
-      }
-      else {
-        color = BLACK;
-      }
-    }
-    
-    leds.setPixel(i, color);
-    leds.show();
   }
   
-  delay(200); 
+  delay(50); 
 }
 
 void colorWipe(int color, int wait)
