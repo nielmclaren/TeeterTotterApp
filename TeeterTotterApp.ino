@@ -69,7 +69,7 @@ int marblePositions[numMarbles];
 int marbleSpeeds[numMarbles];
 int marbleMaxSpeed;
 int marbleMovesRemaining[numMarbles];
-const int marbleResolution = 4;
+const int marbleResolution = 16;
 const int numPositions = numLedsPerStrip * marbleResolution;
 
 void setup(void) {
@@ -105,18 +105,9 @@ void setup(void) {
   Serial.println();
   
   marbleMaxSpeed = 0;
-  Serial.print("marble speeds: ");
   for (int i = 0; i < numMarbles; i++) {
     marblePositions[i] = (floor((numLedsPerStrip - numMarbles) / 2) + i) * marbleResolution;
-    
-    Serial.print(marbleSpeeds[i]);
-    Serial.print(' ');
   }
-  Serial.println();
-  
-  Serial.print("marble max speed: ");
-  Serial.print(marbleMaxSpeed);
-  Serial.println();
 }
 
 void loop() {
@@ -128,10 +119,14 @@ void loop() {
   currTilt = event.acceleration.x / 10;
   tiltDirection = abs(currTilt) / currTilt;
   
+  int minSpeed = 3;
+  marbleMaxSpeed = 0;
   for (int i = 0; i < numMarbles; i++) {
-    marbleSpeeds[i] = tiltDirection > 0 ? i + 1: numMarbles - i;
+    marbleSpeeds[i] = (tiltDirection > 0 ? i + minSpeed : numMarbles - i - 1 + minSpeed)   *   8 * abs(currTilt);
+    if (marbleSpeeds[i] > marbleMaxSpeed) {
+      marbleMaxSpeed = marbleSpeeds[i];
+    }
   }
-  marbleMaxSpeed = numMarbles;
   
   for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
     for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
@@ -146,7 +141,7 @@ void loop() {
 void stepMarbleWalk() {
   bool allMarblesMoved;
   
-  if (abs(currTilt) > 0.1) {
+  if (abs(currTilt) > 0.05) {
     for (int i = 0; i < numMarbles; i++) {
       marbleMovesRemaining[i] = marbleSpeeds[i];
     }
