@@ -63,9 +63,12 @@ OctoWS2811 leds(numLedsPerStrip, displayMemory, drawingMemory, config);
 float currTilt;
 int tiltDirection;
 int currMode;
+
 const int numMarbles = floor(numLedsPerStrip / 3);
 int marblePositions[numMarbles];
 bool marbleMoved[numMarbles];
+const int marbleResolution = 4;
+const int numPositions = numLedsPerStrip * marbleResolution;
 
 void setup(void) {
 #ifndef ESP8266
@@ -101,11 +104,12 @@ void setup(void) {
   
   for (int i = 0; i < numMarbles; i++) {
     if (i < numMarbles/2) {
-      marblePositions[i] = i;
+      marblePositions[i] = i * marbleResolution;
     }
     else {
-      marblePositions[i] = numLedsPerStrip - (numMarbles - i - 1) - 1;
+      marblePositions[i] = numPositions - (numMarbles - i) * marbleResolution + 1;
     }
+    Serial.println(marblePositions[i]);
     marbleMoved[i] = false;
   }
 }
@@ -154,21 +158,26 @@ void stepMarbleWalk() {
 bool stepMarbleWalk(int i) {
   int currPos = marblePositions[i];
   int targetPos = currPos + tiltDirection;
-  if (targetPos >= 0 && targetPos < numLedsPerStrip && isOpenPosition(targetPos)) {
+  if (targetPos >= 0 && targetPos + marbleResolution - 1 < numPositions && isOpenPosition(targetPos, i)) {
     marblePositions[i] = targetPos;
     return true;
   }
   return false;
 }
 
-bool isOpenPosition(int position) {
+bool isOpenPosition(int start, int exceptMarbleIndex) {
+  // FIXME: The minus one is on probation.
+  int end = start + marbleResolution - 1;
   for (int i = 0; i < numMarbles; i++) {
-    if (marblePositions[i] == position) {
+    if (i == exceptMarbleIndex) continue;
+    if (marblePositions[i] <= start && start < marblePositions[i] + marbleResolution
+        || marblePositions[i] <= end && end < marblePositions[i] + marbleResolution) {
       return false;
     }
   }
   return true;
 }
+
 
 int getColor(int strip, int led) {
   switch (currMode) {
@@ -202,7 +211,7 @@ int getColorTestMode(int strip, int led) {
 
 int getColorMarbleWalkMode(int strip, int led) {
   for (int i = 0; i < numMarbles; i++) {
-    if (floor(marblePositions[i]) == led) {
+    if (floor(marblePositions[i] / marbleResolution) == led) {
       return DGREEN;
     }
   }
