@@ -66,7 +66,9 @@ int currMode;
 
 const int numMarbles = floor(numLedsPerStrip / 3);
 int marblePositions[numMarbles];
-bool marbleMoved[numMarbles];
+int marbleSpeeds[numMarbles];
+int marbleMaxSpeed;
+int marbleMovesRemaining[numMarbles];
 const int marbleResolution = 4;
 const int numPositions = numLedsPerStrip * marbleResolution;
 
@@ -102,16 +104,24 @@ void setup(void) {
   Serial.println(numMarbles);
   Serial.println();
   
+  marbleMaxSpeed = 0;
+  Serial.print("marble speeds: ");
   for (int i = 0; i < numMarbles; i++) {
-    if (i < numMarbles/2) {
-      marblePositions[i] = i * marbleResolution;
+    marblePositions[i] = (floor((numLedsPerStrip - numMarbles) / 2) + i) * marbleResolution;
+    marbleSpeeds[i] = floor(abs((float)(numMarbles - 1)/2 - i)) + 1;
+    
+    if (marbleSpeeds[i] > marbleMaxSpeed) {
+      marbleMaxSpeed = marbleSpeeds[i];
     }
-    else {
-      marblePositions[i] = numPositions - (numMarbles - i) * marbleResolution + 1;
-    }
-    Serial.println(marblePositions[i]);
-    marbleMoved[i] = false;
+    
+    Serial.print(marbleSpeeds[i]);
+    Serial.print(' ');
   }
+  Serial.println();
+  
+  Serial.print("marble max speed: ");
+  Serial.print(marbleMaxSpeed);
+  Serial.println();
 }
 
 void loop() {
@@ -130,24 +140,37 @@ void loop() {
   }
   leds.show();
   
-  delay(50); 
+  delay(20); 
 }
 
 void stepMarbleWalk() {
   bool allMarblesMoved;
   
   if (abs(currTilt) > 0.1) {
+    for (int i = 0; i < numMarbles; i++) {
+      marbleMovesRemaining[i] = marbleSpeeds[i];
+    }
+    
     // repeat simulation step until all marbles have moved to ensure equal opportunity
-    for (int step = 0; step < numMarbles; step++) {
+    for (int step = 0; step < numMarbles * marbleMaxSpeed; step++) {
+      Serial.println("--- step");
       allMarblesMoved = true;
+      
+      Serial.print("marble moves remaining: ");
       for (int i = 0; i < numMarbles; i++) {
-        if (step == 0 || !marbleMoved[i]) {
-          marbleMoved[i] = stepMarbleWalk(i);
+        if (marbleMovesRemaining[i] > 0 && stepMarbleWalk(i)) {
+          marbleMovesRemaining[i]--;
         }
-        if (!marbleMoved[i]) {
+        
+        if (marbleMovesRemaining[i] > 0) {
           allMarblesMoved = false;
         }
+        Serial.print(marbleMovesRemaining[i]);
+        Serial.print(' ');
       }
+      Serial.println();
+      Serial.println();
+      
       if (allMarblesMoved) {
         break;
       }
