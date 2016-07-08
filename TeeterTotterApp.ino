@@ -35,15 +35,9 @@
 #define VIOLET 0xCC66FF
 #define GREY 0x888888
 #define WHITE  0xFFFFFF
-
 #define PINK   0xFF1088
+#define DGREEN  0x003300
 
-
-// software SPI
-//Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
-// hardware SPI
-//Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
-// I2C
 Adafruit_LIS3DH lis = Adafruit_LIS3DH();
 
 #if defined(ARDUINO_ARCH_SAMD)
@@ -60,6 +54,18 @@ int drawingMemory[numLedsPerStrip * numStrips];
 const int config = WS2811_GRB | WS2811_800kHz;
 
 OctoWS2811 leds(numLedsPerStrip, displayMemory, drawingMemory, config);
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+#define MODE_TEST 0
+#define MODE_MARBLE_WALK 1
+
+float currTilt;
+int tiltDirection;
+int currMode;
+const int numMarbles = floor(numLedsPerStrip / 3);
+int marblePositions[numMarbles];
+bool marbleMoved[numMarbles];
 
 void setup(void) {
 #ifndef ESP8266
@@ -82,51 +88,123 @@ void setup(void) {
   
   leds.begin();
   leds.show();
+  
+  currMode = MODE_MARBLE_WALK;
+  
+  Serial.print("numStrips: ");
+  Serial.println(numStrips);
+  Serial.print("numLedsPerStrip: ");
+  Serial.println(numLedsPerStrip);
+  Serial.print("numMarbles: ");
+  Serial.println(numMarbles);
+  Serial.println();
+  
+  for (int i = 0; i < numMarbles; i++) {
+    if (i < numMarbles/2) {
+      marblePositions[i] = i;
+    }
+    else {
+      marblePositions[i] = numLedsPerStrip - (numMarbles - i - 1) - 1;
+    }
+    marbleMoved[i] = false;
+  }
 }
 
 void loop() {
   sensors_event_t event; 
   lis.getEvent(&event);
   
-  float fractionX = event.acceleration.x / 10;
-  Serial.print(event.acceleration.x);
-  Serial.print("    ");
-  Serial.println(fractionX);
+  stepMarbleWalk();
+  
+  currTilt = event.acceleration.x / 10;
+  tiltDirection = abs(currTilt) / currTilt;
+  
   for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
     for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
-      int color;
-      float fractionLed = (float)ledIndex / numLedsPerStrip;
-      
-      if (fractionX < 0) {
-        if (fractionLed < -fractionX) {
-          color = RED;
-        }
-        else {
-          color = BLACK;
-        }
-      }
-      else {
-        if (fractionLed < fractionX) {
-          color = GREEN;
-        }
-        else {
-          color = BLACK;
-        }
-      }
-      
-      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, color);
-      leds.show();
+      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, getColor(stripIndex, ledIndex));
     }
   }
+  leds.show();
   
   delay(50); 
 }
 
-void colorWipe(int color, int wait)
-{
-  for (int i=0; i < leds.numPixels(); i++) {
-    leds.setPixel(i, color);
-    leds.show();
-    delayMicroseconds(wait);
+void stepMarbleWalk() {
+  bool allMarblesMoved;
+  
+  if (abs(currTilt) > 0.1) {
+    // repeat simulation step until all marbles have moved to ensure equal opportunity
+    for (int step = 0; step < numMarbles; step++) {
+      allMarblesMoved = true;
+      for (int i = 0; i < numMarbles; i++) {
+        if (step == 0 || !marbleMoved[i]) {
+          marbleMoved[i] = stepMarbleWalk(i);
+        }
+        if (!marbleMoved[i]) {
+          allMarblesMoved = false;
+        }
+      }
+      if (allMarblesMoved) {
+        break;
+      }
+    }
   }
+}
+
+bool stepMarbleWalk(int i) {
+  int currPos = marblePositions[i];
+  int targetPos = currPos + tiltDirection;
+  if (targetPos >= 0 && targetPos < numLedsPerStrip && isOpenPosition(targetPos)) {
+    marblePositions[i] = targetPos;
+    return true;
+  }
+  return false;
+}
+
+bool isOpenPosition(int position) {
+  for (int i = 0; i < numMarbles; i++) {
+    if (marblePositions[i] == position) {
+      return false;
+    }
+  }
+  return true;
+}
+
+int getColor(int strip, int led) {
+  switch (currMode) {
+    case MODE_TEST:
+      return getColorTestMode(strip, led);
+    case MODE_MARBLE_WALK:
+      return getColorMarbleWalkMode(strip, led);
+  }
+}
+
+int getColorTestMode(int strip, int led) {
+  float fractionLed = (float)led / numLedsPerStrip;
+  
+  if (currTilt < 0) {
+    if (fractionLed < -currTilt) {
+      return RED;
+    }
+    else {
+      return BLACK;
+    }
+  }
+  else {
+    if (fractionLed < currTilt) {
+      return GREEN;
+    }
+    else {
+      return BLACK;
+    }
+  }
+}
+
+int getColorMarbleWalkMode(int strip, int led) {
+  for (int i = 0; i < numMarbles; i++) {
+    if (floor(marblePositions[i]) == led) {
+      return DGREEN;
+    }
+  }
+  return BLACK;
 }
