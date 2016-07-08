@@ -108,11 +108,6 @@ void setup(void) {
   Serial.print("marble speeds: ");
   for (int i = 0; i < numMarbles; i++) {
     marblePositions[i] = (floor((numLedsPerStrip - numMarbles) / 2) + i) * marbleResolution;
-    marbleSpeeds[i] = floor(abs((float)(numMarbles - 1)/2 - i)) + 1;
-    
-    if (marbleSpeeds[i] > marbleMaxSpeed) {
-      marbleMaxSpeed = marbleSpeeds[i];
-    }
     
     Serial.print(marbleSpeeds[i]);
     Serial.print(' ');
@@ -132,6 +127,11 @@ void loop() {
   
   currTilt = event.acceleration.x / 10;
   tiltDirection = abs(currTilt) / currTilt;
+  
+  for (int i = 0; i < numMarbles; i++) {
+    marbleSpeeds[i] = tiltDirection > 0 ? i + 1: numMarbles - i;
+  }
+  marbleMaxSpeed = numMarbles;
   
   for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
     for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
@@ -153,10 +153,8 @@ void stepMarbleWalk() {
     
     // repeat simulation step until all marbles have moved to ensure equal opportunity
     for (int step = 0; step < numMarbles * marbleMaxSpeed; step++) {
-      Serial.println("--- step");
       allMarblesMoved = true;
       
-      Serial.print("marble moves remaining: ");
       for (int i = 0; i < numMarbles; i++) {
         if (marbleMovesRemaining[i] > 0 && stepMarbleWalk(i)) {
           marbleMovesRemaining[i]--;
@@ -165,11 +163,7 @@ void stepMarbleWalk() {
         if (marbleMovesRemaining[i] > 0) {
           allMarblesMoved = false;
         }
-        Serial.print(marbleMovesRemaining[i]);
-        Serial.print(' ');
       }
-      Serial.println();
-      Serial.println();
       
       if (allMarblesMoved) {
         break;
