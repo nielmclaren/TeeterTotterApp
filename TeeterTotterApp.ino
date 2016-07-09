@@ -367,15 +367,27 @@ int getColorMarbleWalkMode(int strip, int led) {
 }
 
 int getColorBeamEmitterMode(int strip, int led) {
+  bool hasForwardBeam = false;
   for (int i = 0; i < numForwardBeams; i++) {
     if (forwardBeamPositions[i] <= led && led < forwardBeamPositions[i] + beamWidth) {
-      return DGREEN;
+      hasForwardBeam = true;
+      break;
     }
   }
   for (int i = 0; i < numBackwardBeams; i++) {
     if (backwardBeamPositions[i] <= led && led < backwardBeamPositions[i] + beamWidth) {
-      return DGREEN;
+      if (hasForwardBeam) {
+        return GREEN;
+      }
+      else {
+        return DGREEN;
+      }
     }
   }
+  
+  if (hasForwardBeam) {
+    return DGREEN;
+  }
+
   return BLACK;
 }
