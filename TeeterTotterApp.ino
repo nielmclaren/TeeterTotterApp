@@ -36,7 +36,10 @@
 #define GREY 0x888888
 #define WHITE  0xFFFFFF
 #define PINK   0xFF1088
-#define DGREEN  0x000600
+#define DGREEN  0x003300
+#define DDGREEN  0x000600
+#define DPURPLE 0x331133
+#define DDPURPLE 0x190A19
 
 Adafruit_LIS3DH lis = Adafruit_LIS3DH();
 
@@ -57,14 +60,25 @@ OctoWS2811 leds(numLedsPerStrip, displayMemory, drawingMemory, config);
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 
-#define MODE_TEST 0
+#define MODE_TEST -2
+#define MODE_IDLE -1
+#define MODE_BEAM_EMITTER 0
 #define MODE_MARBLE_WALK 1
-#define MODE_BEAM_EMITTER 2
+
+const int numActiveModes = 2;
+int currMode;
+
+bool isSwitching;
+bool isActive;
+const int idleDelay = 10000;
+const int modeDelay = 20000;
+unsigned long idleStartTime;
+unsigned long activeStartTime;
+unsigned long prevSwitchTime;
 
 float currTilt;
 int tiltDirection;
-int currMode;
-const int maxTiltReadings = 10;
+const int maxTiltReadings = 5;
 int numTiltReadings;
 float tiltReadings[maxTiltReadings];
 float prevTiltAverage;
@@ -87,8 +101,8 @@ int numForwardBeams;
 int numBackwardBeams;
 int forwardBeamPositions[maxBeams];
 int backwardBeamPositions[maxBeams];
-int beamWidth;
-int beamSpeed;
+const int beamWidth = 4;
+const int beamSpeed = 2;
 int prevBeamCreatedDirection;
 
 
@@ -114,7 +128,7 @@ void setup(void) {
   leds.begin();
   leds.show();
   
-  currMode = MODE_BEAM_EMITTER;
+  currMode = MODE_IDLE;
   
   Serial.print("numStrips: ");
   Serial.println(numStrips);
@@ -123,6 +137,12 @@ void setup(void) {
   Serial.print("numMarbles: ");
   Serial.println(numMarbles);
   Serial.println();
+  
+  isSwitching = false;
+  isActive = false;
+  idleStartTime = 0;
+  activeStartTime = 0;
+  prevSwitchTime = 0;
   
   numTiltReadings = 0;
   prevTiltAverage = 0;
@@ -136,8 +156,6 @@ void setup(void) {
   
   numForwardBeams = 0;
   numBackwardBeams = 0;
-  beamWidth = 4;
-  beamSpeed = 2;
   prevBeamCreatedDirection = 0;
 }
 
@@ -146,15 +164,6 @@ void loop() {
   
   stepMarbleWalk();
   stepBeamEmitter();
-  
-  int minSpeed = 3;
-  marbleMaxSpeed = 0;
-  for (int i = 0; i < numMarbles; i++) {
-    marbleSpeeds[i] = (tiltDirection > 0 ? i + minSpeed : numMarbles - i - 1 + minSpeed)   *   8 * abs(currTilt);
-    if (marbleSpeeds[i] > marbleMaxSpeed) {
-      marbleMaxSpeed = marbleSpeeds[i];
-    }
-  }
   
   for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
     for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
@@ -200,9 +209,44 @@ void readTilt() {
     prevTiltMoveDirection = tiltMoveDirection;
     tiltMoveDirection = abs(tiltMoveDirectionDelta) / tiltMoveDirectionDelta;
   }
+  
+  unsigned long now = millis();
+  isSwitching = tiltMoveDirection != prevTiltMoveDirection
+      && abs(tiltAverage) > 0.1
+      && prevBeamCreatedDirection != tiltAverageDirection;
+      
+  if (isSwitching) {
+    prevSwitchTime = now;
+    if (!isActive) {
+      activeStartTime = now;
+      isActive = true;
+    }
+  }
+  
+  if (now - prevSwitchTime > idleDelay && isActive) {
+    idleStartTime = now;
+    activeStartTime = 0;
+    isActive = false;
+  }
+  
+  if (isActive) {
+    currMode = floor(((millis() - activeStartTime) % (numActiveModes * modeDelay)) / modeDelay);
+  }
+  else {
+    currMode = MODE_IDLE;
+  }
 }
 
 void stepMarbleWalk() {
+  int minSpeed = 3;
+  marbleMaxSpeed = 0;
+  for (int i = 0; i < numMarbles; i++) {
+    marbleSpeeds[i] = (tiltDirection > 0 ? numMarbles - i - 1 + minSpeed : i + minSpeed)   *   8 * abs(currTilt);
+    if (marbleSpeeds[i] > marbleMaxSpeed) {
+      marbleMaxSpeed = marbleSpeeds[i];
+    }
+  }
+  
   bool allMarblesMoved;
   
   if (abs(currTilt) > 0.05) {
@@ -233,7 +277,7 @@ void stepMarbleWalk() {
 
 bool stepMarbleWalk(int i) {
   int currPos = marblePositions[i];
-  int targetPos = currPos + tiltDirection;
+  int targetPos = currPos - tiltDirection;
   if (targetPos >= 0 && targetPos + marbleResolution - 1 < numPositions && isOpenPosition(targetPos, i)) {
     marblePositions[i] = targetPos;
     return true;
@@ -273,16 +317,14 @@ void stepBeams() {
   
   for (int i = numBackwardBeams - 1; i >= 0; i--) {
     backwardBeamPositions[i] -= beamSpeed;
-    if (backwardBeamPositions[i] < 0) {
+    if (backwardBeamPositions[i] < -beamWidth) {
       numBackwardBeams--;
     }
   }
 }
 
 void createBeams() {
-  if (tiltMoveDirection != prevTiltMoveDirection
-      && abs(tiltAverage) > 0.1
-      && prevBeamCreatedDirection != tiltAverageDirection) {
+  if (isSwitching) {
     if (tiltAverageDirection > 0) {
       createForwardBeam();
     }
@@ -303,7 +345,7 @@ void createForwardBeam() {
     forwardBeamPositions[i] = forwardBeamPositions[i - 1];
   }
   
-  forwardBeamPositions[0] = 0;
+  forwardBeamPositions[0] = -beamWidth;
   if (numForwardBeams <= 0) {
     numForwardBeams = 1;
   }
@@ -328,6 +370,8 @@ int getColor(int strip, int led) {
   switch (currMode) {
     case MODE_TEST:
       return getColorTestMode(strip, led);
+    case MODE_IDLE:
+      return getColorIdleMode(strip, led);
     case MODE_MARBLE_WALK:
       return getColorMarbleWalkMode(strip, led);
     case MODE_BEAM_EMITTER:
@@ -357,6 +401,10 @@ int getColorTestMode(int strip, int led) {
   }
 }
 
+int getColorIdleMode(int strip, int led) {
+  return DDPURPLE;
+}
+
 int getColorMarbleWalkMode(int strip, int led) {
   for (int i = 0; i < numMarbles; i++) {
     if (floor(marblePositions[i] / marbleResolution) == led) {
@@ -377,16 +425,16 @@ int getColorBeamEmitterMode(int strip, int led) {
   for (int i = 0; i < numBackwardBeams; i++) {
     if (backwardBeamPositions[i] <= led && led < backwardBeamPositions[i] + beamWidth) {
       if (hasForwardBeam) {
-        return GREEN;
+        return DGREEN;
       }
       else {
-        return DGREEN;
+        return DDGREEN;
       }
     }
   }
   
   if (hasForwardBeam) {
-    return DGREEN;
+    return DDGREEN;
   }
 
   return BLACK;
