@@ -64,8 +64,9 @@ OctoWS2811 leds(numLedsPerStrip, displayMemory, drawingMemory, config);
 #define MODE_IDLE -1
 #define MODE_BEAM 0
 #define MODE_MARBLE 1
+#define MODE_LEVEL 2
 
-const int numActiveModes = 2;
+const int numActiveModes = 3;
 int currMode;
 
 bool isSwitching;
@@ -101,8 +102,8 @@ int numForwardBeams;
 int numBackwardBeams;
 int forwardBeamPositions[maxBeams];
 int backwardBeamPositions[maxBeams];
-const int beamWidth = 4;
-const int beamSpeed = 2;
+const int beamWidth = 6;
+const int beamSpeed = 1;
 int prevBeamCreatedDirection;
 
 
@@ -167,11 +168,14 @@ void loop() {
     case MODE_IDLE:
       loopIdleMode();
       break;
+    case MODE_BEAM:
+      loopBeamMode();
+      break;
     case MODE_MARBLE:
       loopMarbleMode();
       break;
-    case MODE_BEAM:
-      loopBeamMode();
+    case MODE_LEVEL:
+      loopLevelMode();
       break;
   }
 
@@ -460,6 +464,27 @@ int getBeamModeColor(int strip, int led) {
 
   return BLACK;
 }
+
+void loopLevelMode() {
+  int color;
+  int halfWidth = 3;
+  int tiltLedIndex = floor(numLedsPerStrip * (1 + tiltAverage) / 2);
+
+  for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
+    for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
+      if (tiltLedIndex - halfWidth < ledIndex && ledIndex < tiltLedIndex + halfWidth) {
+        color = DDGREEN;
+      }
+      else {
+        color = DDPURPLE;
+      }
+      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, color);
+    }
+  }
+  leds.show();
+}
+
+///
 
 float modTime(long period) {
   return (float)(millis() % period) / period;
