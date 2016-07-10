@@ -439,3 +439,47 @@ int getColorBeamEmitterMode(int strip, int led) {
 
   return BLACK;
 }
+
+float modTime(long period) {
+  return (float)(millis() % period) / period;
+}
+
+float clampTime(float t) {
+  while (t >= 1) {
+    t -= 1;
+  }
+  while (t <= 0) {
+    t += 1;
+  }
+  return t;
+}
+
+float splitTime(float t) {
+  if (t < 0.5) {
+    return 2.0 * t;
+  }
+  else {
+    return (1.0 - t) * 2.0;
+  }
+}
+
+void setPixelColor(int stripIndex, int pixelIndex, int color) {
+  leds.setPixel(stripIndex * numLedsPerStrip + pixelIndex, color);
+}
+
+const int redMask = 0xFF0000, greenMask = 0xFF00, blueMask = 0xFF;
+int lerpColor(int a, int b, float v) {
+  int ar = (a & redMask) >> 16;
+  int ag = (a & greenMask) >> 8;
+  int ab = (a & blueMask);
+  int br = (b & redMask) >> 16;
+  int bg = (b & greenMask) >> 8;
+  int bb = (b & blueMask);
+
+  ar += (br - ar) * v;
+  ag += (bg - ag) * v;
+  ab += (bb - ab) * v;
+
+  int rgb = (ar << 16) + (ag << 8) + ab;
+  return rgb;
+}
