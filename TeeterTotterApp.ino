@@ -62,8 +62,8 @@ OctoWS2811 leds(numLedsPerStrip, displayMemory, drawingMemory, config);
 
 #define MODE_TEST -2
 #define MODE_IDLE -1
-#define MODE_BEAM_EMITTER 0
-#define MODE_MARBLE_WALK 1
+#define MODE_BEAM 0
+#define MODE_MARBLE 1
 
 const int numActiveModes = 2;
 int currMode;
@@ -134,8 +134,6 @@ void setup(void) {
   Serial.println(numStrips);
   Serial.print("numLedsPerStrip: ");
   Serial.println(numLedsPerStrip);
-  Serial.print("numMarbles: ");
-  Serial.println(numMarbles);
   Serial.println();
 
   isSwitching = false;
@@ -162,17 +160,22 @@ void setup(void) {
 void loop() {
   readTilt();
 
-  stepMarbleWalk();
-  stepBeamEmitter();
-
-  for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
-    for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
-      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, getColor(stripIndex, ledIndex));
-    }
+  switch (currMode) {
+    case MODE_TEST:
+      loopTestMode();
+      break;
+    case MODE_IDLE:
+      loopIdleMode();
+      break;
+    case MODE_MARBLE:
+      loopMarbleMode();
+      break;
+    case MODE_BEAM:
+      loopBeamMode();
+      break;
   }
-  leds.show();
 
-  delay(100);
+  delay(20);
 }
 
 void readTilt() {
@@ -237,7 +240,50 @@ void readTilt() {
   }
 }
 
-void stepMarbleWalk() {
+void loopTestMode() {
+  for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
+    for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
+      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, getTestModeColor(stripIndex, ledIndex));
+    }
+  }
+  leds.show();
+}
+
+int getTestModeColor(int strip, int led) {
+  float fractionLed = (float)led / numLedsPerStrip;
+
+  if (currTilt < 0) {
+    if (fractionLed < -currTilt) {
+      return RED;
+    }
+    else {
+      return BLACK;
+    }
+  }
+  else {
+    if (fractionLed < currTilt) {
+      return GREEN;
+    }
+    else {
+      return BLACK;
+    }
+  }
+}
+
+void loopIdleMode() {
+  for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
+    for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
+      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, getIdleModeColor(stripIndex, ledIndex));
+    }
+  }
+  leds.show();
+}
+
+int getIdleModeColor(int strip, int led) {
+  return DDPURPLE;
+}
+
+void loopMarbleMode() {
   int minSpeed = 3;
   marbleMaxSpeed = 0;
   for (int i = 0; i < numMarbles; i++) {
@@ -273,6 +319,13 @@ void stepMarbleWalk() {
       }
     }
   }
+
+  for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
+    for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
+      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, getMarbleModeColor(stripIndex, ledIndex));
+    }
+  }
+  leds.show();
 }
 
 bool stepMarbleWalk(int i) {
@@ -283,6 +336,15 @@ bool stepMarbleWalk(int i) {
     return true;
   }
   return false;
+}
+
+int getMarbleModeColor(int strip, int led) {
+  for (int i = 0; i < numMarbles; i++) {
+    if (floor(marblePositions[i] / marbleResolution) == led) {
+      return DGREEN;
+    }
+  }
+  return BLACK;
 }
 
 bool isOpenPosition(int start, int exceptMarbleIndex) {
@@ -297,7 +359,7 @@ bool isOpenPosition(int start, int exceptMarbleIndex) {
   return true;
 }
 
-void stepBeamEmitter() {
+void loopBeamMode() {
   stepBeams();
   createBeams();
 
@@ -305,6 +367,13 @@ void stepBeamEmitter() {
     // Allow beam alternation to reset if we make it to halfway.
     prevBeamCreatedDirection = 0;
   }
+
+  for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
+    for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
+      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, getBeamModeColor(stripIndex, ledIndex));
+    }
+  }
+  leds.show();
 }
 
 void stepBeams() {
@@ -366,55 +435,7 @@ void createBackwardBeam() {
   }
 }
 
-int getColor(int strip, int led) {
-  switch (currMode) {
-    case MODE_TEST:
-      return getColorTestMode(strip, led);
-    case MODE_IDLE:
-      return getColorIdleMode(strip, led);
-    case MODE_MARBLE_WALK:
-      return getColorMarbleWalkMode(strip, led);
-    case MODE_BEAM_EMITTER:
-      return getColorBeamEmitterMode(strip, led);
-  }
-  return RED;
-}
-
-int getColorTestMode(int strip, int led) {
-  float fractionLed = (float)led / numLedsPerStrip;
-
-  if (currTilt < 0) {
-    if (fractionLed < -currTilt) {
-      return RED;
-    }
-    else {
-      return BLACK;
-    }
-  }
-  else {
-    if (fractionLed < currTilt) {
-      return GREEN;
-    }
-    else {
-      return BLACK;
-    }
-  }
-}
-
-int getColorIdleMode(int strip, int led) {
-  return DDPURPLE;
-}
-
-int getColorMarbleWalkMode(int strip, int led) {
-  for (int i = 0; i < numMarbles; i++) {
-    if (floor(marblePositions[i] / marbleResolution) == led) {
-      return DGREEN;
-    }
-  }
-  return BLACK;
-}
-
-int getColorBeamEmitterMode(int strip, int led) {
+int getBeamModeColor(int strip, int led) {
   bool hasForwardBeam = false;
   for (int i = 0; i < numForwardBeams; i++) {
     if (forwardBeamPositions[i] <= led && led < forwardBeamPositions[i] + beamWidth) {
