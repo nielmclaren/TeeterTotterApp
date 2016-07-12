@@ -96,11 +96,14 @@ int prevTiltMoveDirection;
 
 const int numMarbles = floor(numLedsPerStrip / 3);
 int marblePositions[numMarbles];
+int marbleColors[numMarbles];
+int prevMarbleHue;
 int marbleSpeeds[numMarbles];
 int marbleMaxSpeed;
 int marbleMovesRemaining[numMarbles];
 const int marbleResolution = 16;
-const int numPositions = numLedsPerStrip * marbleResolution;
+const int numMarblePositions = numLedsPerStrip * marbleResolution;
+bool marbleColorsChanged;
 
 const int maxBeams = 8;
 int numForwardBeams;
@@ -165,9 +168,13 @@ void setup(void) {
   }
 
   marbleMaxSpeed = 0;
+  prevMarbleHue = 0;
+  prevMarbleHue = nextMarbleHue();
   for (int i = 0; i < numMarbles; i++) {
     marblePositions[i] = (floor((numLedsPerStrip - numMarbles) / 2) + i) * marbleResolution;
+    marbleColors[i] = makeMarbleColor(prevMarbleHue);
   }
+  marbleColorsChanged = false;
 
   numForwardBeams = 0;
   numBackwardBeams = 0;
@@ -344,6 +351,32 @@ void loopMarbleMode() {
     }
   }
 
+  bool allMarblesForward = true;
+  bool allMarblesBackward = true;
+  for (int i = 0; i < numMarbles; i++) {
+    if (floor(marblePositions[i] / marbleResolution) != i) {
+      allMarblesForward = false;
+    }
+    if (floor(marblePositions[i] / marbleResolution) != numLedsPerStrip - numMarbles + i) {
+      allMarblesBackward = false;
+    }
+  }
+
+  if (allMarblesForward || allMarblesBackward) {
+    if (!marbleColorsChanged) {
+      Serial.println("ALL MARBLES AT ONE END!");
+      int hue = nextMarbleHue();
+      for (int i = 0; i < numMarbles; i++) {
+        marbleColors[i] = makeMarbleColor(hue);
+      }
+      prevMarbleHue = hue;
+      marbleColorsChanged = true;
+    }
+  }
+  else {
+    marbleColorsChanged = false;
+  }
+
   bool allMarblesMoved;
 
   if (abs(currTilt) > 0.05) {
@@ -356,7 +389,7 @@ void loopMarbleMode() {
       allMarblesMoved = true;
 
       for (int i = 0; i < numMarbles; i++) {
-        if (marbleMovesRemaining[i] > 0 && stepMarbleWalk(i)) {
+        if (marbleMovesRemaining[i] > 0 && stepMarbles(i)) {
           marbleMovesRemaining[i]--;
         }
 
@@ -379,10 +412,20 @@ void loopMarbleMode() {
   leds.show();
 }
 
-bool stepMarbleWalk(int i) {
+int nextMarbleHue() {
+  int hue;
+  while ((hue = random(8) * 45) == prevMarbleHue) {}
+  return hue;
+}
+
+int makeMarbleColor(int hue) {
+  return makeColor(hue, globalSaturation, random(3, 7));
+}
+
+bool stepMarbles(int i) {
   int currPos = marblePositions[i];
   int targetPos = currPos - tiltDirection;
-  if (targetPos >= 0 && targetPos + marbleResolution - 1 < numPositions && isOpenPosition(targetPos, i)) {
+  if (targetPos >= 0 && targetPos + marbleResolution - 1 < numMarblePositions && isOpenPosition(targetPos, i)) {
     marblePositions[i] = targetPos;
     return true;
   }
@@ -392,7 +435,7 @@ bool stepMarbleWalk(int i) {
 int getMarbleModeColor(int strip, int led) {
   for (int i = 0; i < numMarbles; i++) {
     if (floor(marblePositions[i] / marbleResolution) == led) {
-      return DGREEN;
+      return marbleColors[i];
     }
   }
   return BLACK;
