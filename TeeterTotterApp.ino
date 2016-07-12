@@ -65,6 +65,8 @@ OctoWS2811 leds(numLedsPerStrip, displayMemory, drawingMemory, config);
 #define MODE_BEAM 0
 #define MODE_MARBLE 1
 #define MODE_LEVEL 2
+#define MODE_STROBE 3
+#define MODE_RAINBOW 4
 
 const int numActiveModes = 3;
 int currMode;
@@ -106,12 +108,19 @@ const int beamWidth = 6;
 const int beamSpeed = 1;
 int prevBeamCreatedDirection;
 
+float strobePosition;
+const float strobeSpeed = 4;
+
+float rainbowPosition;
+const float rainbowSpeed = 5;
+const int numRainbowColors = 7;
+int rainbowColors[numRainbowColors];
+
+const int globalSaturation = 100;
+const int globalLightness = 5;
+
 
 void setup(void) {
-#ifndef ESP8266
-  while (!Serial);     // will pause Zero, Leonardo, etc until serial console opens
-#endif
-
   Serial.begin(9600);
   Serial.println("LIS3DH test!");
 
@@ -156,6 +165,16 @@ void setup(void) {
   numForwardBeams = 0;
   numBackwardBeams = 0;
   prevBeamCreatedDirection = 0;
+
+  strobePosition = 0;
+  rainbowPosition = 0;
+  rainbowColors[0] = makeColor(0, globalSaturation, globalLightness);
+  rainbowColors[1] = makeColor(30, globalSaturation, globalLightness);
+  rainbowColors[2] = makeColor(60, globalSaturation, globalLightness);
+  rainbowColors[3] = makeColor(120, globalSaturation, globalLightness);
+  rainbowColors[4] = makeColor(190, globalSaturation, globalLightness);
+  rainbowColors[5] = makeColor(230, globalSaturation, globalLightness);
+  rainbowColors[6] = makeColor(290, globalSaturation, globalLightness);
 }
 
 void loop() {
@@ -176,6 +195,12 @@ void loop() {
       break;
     case MODE_LEVEL:
       loopLevelMode();
+      break;
+    case MODE_STROBE:
+      loopStrobeMode();
+      break;
+    case MODE_RAINBOW:
+      loopRainbowMode();
       break;
   }
 
@@ -484,6 +509,66 @@ void loopLevelMode() {
   leds.show();
 }
 
+void loopStrobeMode() {
+  int color;
+  int width = 16;
+  float threshold = 0.5;
+  float t = modTime(2000);
+  int wavelength = numLedsPerStrip / 3;
+
+  for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
+    for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
+      int hue = (int)(mapf(splitTime(clampTime(t + (float)(ledIndex % wavelength) / wavelength)), 0, 1, 280, 380)) % 360;
+      float v = (float)((numLedsPerStrip + ledIndex - (int)strobePosition) % width) / width;
+      if (v < threshold) {
+        color = makeColor(hue, globalSaturation, globalLightness);
+      }
+      else {
+        color = BLACK;
+      }
+      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, color);
+    }
+  }
+  leds.show();
+
+  strobePosition += currTilt * strobeSpeed;
+  while (strobePosition > width) {
+    strobePosition -= width;
+  }
+}
+
+void loopRainbowMode() {
+  int color;
+  int width = 16;
+  float threshold = 0.5 * (1 - abs(currTilt));
+
+  for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
+    for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
+      float v = (float)((numLedsPerStrip + ledIndex - (int)rainbowPosition) % width) / width;
+      int colorIndex = floor(wrap(ledIndex - (int)rainbowPosition, numRainbowColors * width) / width);
+      if (stripIndex == 0) {
+        Serial.print(ledIndex);
+        Serial.print("    ");
+        Serial.print(colorIndex);
+        Serial.println();
+      }
+      if (v < threshold) {
+        color = rainbowColors[colorIndex];
+      }
+      else {
+        color = BLACK;
+      }
+      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, color);
+    }
+  }
+  leds.show();
+
+  rainbowPosition += currTilt * rainbowSpeed;
+  while (rainbowPosition > numRainbowColors * width) {
+    rainbowPosition -= numRainbowColors * width;
+  }
+}
+
 ///
 
 float modTime(long period) {
@@ -494,7 +579,7 @@ float clampTime(float t) {
   while (t >= 1) {
     t -= 1;
   }
-  while (t <= 0) {
+  while (t < 0) {
     t += 1;
   }
   return t;
@@ -529,3 +614,18 @@ int lerpColor(int a, int b, float v) {
   int rgb = (ar << 16) + (ag << 8) + ab;
   return rgb;
 }
+
+float mapf(float x, float in_min, float in_max, float out_min, float out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+float wrap(float v, float max) {
+  while (v >= max) {
+    v -= max;
+  }
+  while (v < 0) {
+    v += max;
+  }
+  return v;
+}
+
