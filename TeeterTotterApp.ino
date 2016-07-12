@@ -65,16 +65,17 @@ OctoWS2811 leds(numLedsPerStrip, displayMemory, drawingMemory, config);
 #define MODE_BEAM 0
 #define MODE_MARBLE 1
 #define MODE_LEVEL 2
-#define MODE_STROBE 3
-#define MODE_RAINBOW 4
+#define MODE_MARQUEE 3
+#define MODE_STROBE 4
+#define MODE_RAINBOW 5
 
-const int numActiveModes = 3;
+const int numActiveModes = 4;
 int currMode;
 
 bool isSwitching;
 bool isActive;
-const int idleDelay = 10000;
-const int modeDelay = 20000;
+const int idleDelay = 30000;
+const int modeDelay = 12 * 60000;
 unsigned long idleStartTime;
 unsigned long activeStartTime;
 unsigned long prevSwitchTime;
@@ -93,6 +94,15 @@ int tiltAverageDirection;
 int prevTiltAverageDirection;
 int tiltMoveDirection;
 int prevTiltMoveDirection;
+
+const int maxSwitchTimings = 20;
+int numSwitchTimings = 0;
+unsigned long switchTimings[maxSwitchTimings];
+const int hyperModeThreshold = 80; // bpm
+unsigned long hyperModeTime;
+bool isHyperMode;
+bool isPreHyperMode;
+const long hyperModeDelay = 20000;
 
 const int numMarbles = floor(numLedsPerStrip / 3);
 int marblePositions[numMarbles];
@@ -120,8 +130,8 @@ int forwardHitColor;
 int backwardBeamColor;
 int backwardHitColor;
 
-float strobePosition;
-const float strobeSpeed = 4;
+float marqueePosition;
+const float marqueeSpeed = 4;
 
 float rainbowPosition;
 const float rainbowSpeed = 5;
@@ -168,6 +178,10 @@ void setup(void) {
   prevTiltAverage = 0;
   prevTiltAverageDirection = 0;
   prevTiltMoveDirection = 0;
+  numSwitchTimings = 0;
+  isHyperMode = false;
+  isPreHyperMode = false;
+  hyperModeTime = 0;
 
   for (int i = 0; i < numLedsPerStrip; i++) {
     sparklePositions[i] = 0;
@@ -191,7 +205,7 @@ void setup(void) {
   backwardBeamColor = makeColor(240, globalSaturation, globalLightness);
   backwardHitColor = 0x999999;
 
-  strobePosition = 0;
+  marqueePosition = 0;
   rainbowPosition = 0;
   rainbowColors[0] = makeColor(0, globalSaturation, globalLightness);
   rainbowColors[1] = makeColor(30, globalSaturation, globalLightness);
@@ -220,6 +234,9 @@ void loop() {
       break;
     case MODE_LEVEL:
       loopLevelMode();
+      break;
+    case MODE_MARQUEE:
+      loopMarqueeMode();
       break;
     case MODE_STROBE:
       loopStrobeMode();
@@ -274,10 +291,38 @@ void readTilt() {
 
   if (isSwitching) {
     prevSwitchTime = now;
+
     if (!isActive) {
       activeStartTime = now;
       isActive = true;
     }
+
+    recordSwitchTiming(now);
+    if (isHyperSpeed(now)) {
+      if (!isPreHyperMode) {
+        Serial.println("PREPARING TO ENTER HYPER SPACE");
+
+        hyperModeTime = now;
+        isPreHyperMode = true;
+      }
+    }
+  }
+
+  if (isPreHyperMode && !isHyperMode && now - hyperModeTime > hyperModeDelay) {
+    Serial.println("ENTERING HYPER SPACE");
+    isHyperMode = true;
+  }
+
+  if (!isHyperSpeed(now)) {
+    if (isHyperMode) {
+      Serial.println("DROPPED OUT OF HYPER SPACE");
+    }
+    else if (isPreHyperMode) {
+      Serial.println("DROPPED OUT OF PRE-HYPER SPACE");
+    }
+
+    isHyperMode = false;
+    isPreHyperMode = false;
   }
 
   if (now - prevSwitchTime > idleDelay && isActive) {
@@ -286,12 +331,48 @@ void readTilt() {
     isActive = false;
   }
 
-  if (isActive) {
+  if (isHyperMode) {
+    if (now - hyperModeTime < hyperModeDelay + 60000) {
+      currMode = MODE_STROBE;
+    }
+    else {
+      currMode = MODE_RAINBOW;
+    }
+  }
+  else if (isActive) {
     currMode = floor(((millis() - activeStartTime) % (numActiveModes * modeDelay)) / modeDelay);
   }
   else {
     currMode = MODE_IDLE;
   }
+}
+
+void recordSwitchTiming(unsigned long now) {
+  if (numSwitchTimings < maxSwitchTimings) {
+    switchTimings[numSwitchTimings] = switchTimings[numSwitchTimings - 1];
+    numSwitchTimings++;
+  }
+  for (int i = numSwitchTimings - 1; i > 0; i--) {
+    switchTimings[i] = switchTimings[i - 1];
+  }
+
+  switchTimings[0] = now;
+  if (numSwitchTimings <= 0) {
+    numSwitchTimings = 1;
+  }
+}
+
+bool isHyperSpeed(unsigned long now) {
+  unsigned long earliest = switchTimings[numSwitchTimings - 1];
+
+  float rate = (float)numSwitchTimings / (float)(now - earliest) * 60000;
+  if (now % 1000 < 50) {
+    Serial.print(rate);
+    Serial.print(" > ");
+    Serial.print(hyperModeThreshold);
+    Serial.println();
+  }
+  return rate > hyperModeThreshold;
 }
 
 void loopTestMode() {
@@ -375,7 +456,6 @@ void loopMarbleMode() {
 
   if (allMarblesForward || allMarblesBackward) {
     if (!marbleColorsChanged) {
-      Serial.println("ALL MARBLES AT ONE END!");
       int hue = nextMarbleHue();
       for (int i = 0; i < numMarbles; i++) {
         marbleColors[i] = makeMarbleColor(hue);
@@ -608,7 +688,7 @@ void loopLevelMode() {
   leds.show();
 }
 
-void loopStrobeMode() {
+void loopMarqueeMode() {
   int color;
   int width = 16;
   float threshold = 0.5;
@@ -618,7 +698,7 @@ void loopStrobeMode() {
   for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
     for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
       int hue = (int)(mapf(splitTime(clampTime(t + (float)(ledIndex % wavelength) / wavelength)), 0, 1, 280, 380)) % 360;
-      float v = (float)((numLedsPerStrip + ledIndex - (int)strobePosition) % width) / width;
+      float v = (float)((numLedsPerStrip + ledIndex - (int)marqueePosition) % width) / width;
       if (v < threshold) {
         color = makeColor(hue, globalSaturation, globalLightness);
       }
@@ -630,10 +710,30 @@ void loopStrobeMode() {
   }
   leds.show();
 
-  strobePosition += currTilt * strobeSpeed;
-  while (strobePosition > width) {
-    strobePosition -= width;
+  marqueePosition += currTilt * marqueeSpeed;
+  while (marqueePosition > width) {
+    marqueePosition -= width;
   }
+}
+
+void loopStrobeMode() {
+  int color;
+  float threshold = 0.5;
+  float t = modTime(200);
+
+  for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
+    for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
+      float v = clampTime(t - abs(ledIndex - (float)numLedsPerStrip/2) * 2 / numLedsPerStrip);
+      if (v < threshold) {
+        color = 0x333333;
+      }
+      else {
+        color = BLACK;
+      }
+      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, color);
+    }
+  }
+  leds.show();
 }
 
 void loopRainbowMode() {
@@ -645,12 +745,6 @@ void loopRainbowMode() {
     for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
       float v = (float)((numLedsPerStrip + ledIndex - (int)rainbowPosition) % width) / width;
       int colorIndex = floor(wrap(ledIndex - (int)rainbowPosition, numRainbowColors * width) / width);
-      if (stripIndex == 0) {
-        Serial.print(ledIndex);
-        Serial.print("    ");
-        Serial.print(colorIndex);
-        Serial.println();
-      }
       if (v < threshold) {
         color = rainbowColors[colorIndex];
       }
