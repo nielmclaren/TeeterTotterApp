@@ -62,8 +62,8 @@ OctoWS2811 leds(numLedsPerStrip, displayMemory, drawingMemory, config);
 
 #define MODE_TEST -2
 #define MODE_IDLE -1
-#define MODE_BEAM 0
-#define MODE_MARBLE 1
+#define MODE_MARBLE 0
+#define MODE_BEAM 1
 #define MODE_LEVEL 2
 #define MODE_MARQUEE 3
 #define MODE_STROBE 4
@@ -74,7 +74,7 @@ int currMode;
 
 bool isSwitching;
 bool isActive;
-const int idleDelay = 30000;
+const int idleDelay = 10000;
 const int modeDelay = 12 * 60000;
 unsigned long idleStartTime;
 unsigned long activeStartTime;
@@ -103,6 +103,7 @@ unsigned long hyperModeTime;
 bool isHyperMode;
 bool isPreHyperMode;
 const long hyperModeDelay = 20000;
+const long rainbowModeDelay = 60000;
 
 const int numMarbles = floor(numLedsPerStrip / 3);
 int marblePositions[numMarbles];
@@ -332,7 +333,7 @@ void readTilt() {
   }
 
   if (isHyperMode) {
-    if (now - hyperModeTime < hyperModeDelay + 60000) {
+    if (now - hyperModeTime < hyperModeDelay + rainbowModeDelay) {
       currMode = MODE_STROBE;
     }
     else {
@@ -366,12 +367,6 @@ bool isHyperSpeed(unsigned long now) {
   unsigned long earliest = switchTimings[numSwitchTimings - 1];
 
   float rate = (float)numSwitchTimings / (float)(now - earliest) * 60000;
-  if (now % 1000 < 50) {
-    Serial.print(rate);
-    Serial.print(" > ");
-    Serial.print(hyperModeThreshold);
-    Serial.println();
-  }
   return rate > hyperModeThreshold;
 }
 
