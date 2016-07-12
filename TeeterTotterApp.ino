@@ -556,17 +556,23 @@ int getBeamModeColor(int strip, int led) {
 }
 
 void loopLevelMode() {
+  float t = modTime(1500);
   int color;
   int halfWidth = 3;
   int tiltLedIndex = floor(numLedsPerStrip * (1 + tiltAverage) / 2);
+  float wavelengthFactor = 0.8;
 
   for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
     for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
-      if (tiltLedIndex - halfWidth < ledIndex && ledIndex < tiltLedIndex + halfWidth) {
-        color = DDGREEN;
+      if (tiltLedIndex == ledIndex) {
+        color = 0x030303;
+      }
+      else if (tiltLedIndex - halfWidth < ledIndex && ledIndex < tiltLedIndex + halfWidth) {
+        color = BLACK;
       }
       else {
-        color = DDPURPLE;
+        float u = splitTime(clampTime(t - wavelengthFactor * ((float)abs(ledIndex - tiltLedIndex) / numLedsPerStrip)));
+        color = makeColor(mapf(u, 0, 1, 0, 30), globalSaturation, random(globalLightness - 1, globalLightness + 1));
       }
       leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, color);
     }
