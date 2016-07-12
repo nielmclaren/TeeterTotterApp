@@ -78,6 +78,9 @@ const int modeDelay = 20000;
 unsigned long idleStartTime;
 unsigned long activeStartTime;
 unsigned long prevSwitchTime;
+int sparklePositions[numLedsPerStrip];
+const int sparkleFadeRate = 8;
+const float sparkleProbability = 0.004;
 
 float currTilt;
 int tiltDirection;
@@ -156,6 +159,10 @@ void setup(void) {
   prevTiltAverage = 0;
   prevTiltAverageDirection = 0;
   prevTiltMoveDirection = 0;
+
+  for (int i = 0; i < numLedsPerStrip; i++) {
+    sparklePositions[i] = 0;
+  }
 
   marbleMaxSpeed = 0;
   for (int i = 0; i < numMarbles; i++) {
@@ -300,16 +307,31 @@ int getTestModeColor(int strip, int led) {
 }
 
 void loopIdleMode() {
-  for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
-    for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
-      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, getIdleModeColor(stripIndex, ledIndex));
+  float t = modTime(5000);
+  int color;
+  float wavelengthFactor = 0.8;
+
+  for (int ledIndex = 0; ledIndex < numLedsPerStrip; ledIndex++) {
+    if (random(1000) < sparkleProbability * 1000) {
+      sparklePositions[ledIndex] = random(255);
+    }
+
+    if (sparklePositions[ledIndex] > 0) {
+      sparklePositions[ledIndex] -= sparkleFadeRate;
+    }
+    else {
+      sparklePositions[ledIndex] = 0;
+    }
+
+    float u = splitTime(clampTime(t + wavelengthFactor * ((float)abs(ledIndex - numLedsPerStrip / 2) * 2 / numLedsPerStrip)));
+    color = makeColor(mapf(u, 0, 1, 280, 320), globalSaturation, globalLightness);
+    color = lerpColor(color, 0x222222, (float)sparklePositions[ledIndex] / 255);
+
+    for (int stripIndex = 0; stripIndex < numStrips; stripIndex++) {
+      leds.setPixel(stripIndex * numLedsPerStrip + ledIndex, color);
     }
   }
   leds.show();
-}
-
-int getIdleModeColor(int strip, int led) {
-  return DDPURPLE;
 }
 
 void loopMarbleMode() {
