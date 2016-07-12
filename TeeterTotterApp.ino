@@ -111,8 +111,14 @@ int numBackwardBeams;
 int forwardBeamPositions[maxBeams];
 int backwardBeamPositions[maxBeams];
 const int beamWidth = 6;
+const int flashWidth = 4;
 const int beamSpeed = 1;
 int prevBeamCreatedDirection;
+int combinedBeamColor;
+int forwardBeamColor;
+int forwardHitColor;
+int backwardBeamColor;
+int backwardHitColor;
 
 float strobePosition;
 const float strobeSpeed = 4;
@@ -179,6 +185,11 @@ void setup(void) {
   numForwardBeams = 0;
   numBackwardBeams = 0;
   prevBeamCreatedDirection = 0;
+  combinedBeamColor = 0x663366;
+  forwardBeamColor = makeColor(120, globalSaturation, globalLightness);
+  forwardHitColor = 0x999999;
+  backwardBeamColor = makeColor(240, globalSaturation, globalLightness);
+  backwardHitColor = 0x999999;
 
   strobePosition = 0;
   rainbowPosition = 0;
@@ -531,25 +542,42 @@ void createBackwardBeam() {
 
 int getBeamModeColor(int strip, int led) {
   bool hasForwardBeam = false;
+  bool hasBackwardBeam = false;
+  bool isFiring = false;
+
   for (int i = 0; i < numForwardBeams; i++) {
     if (forwardBeamPositions[i] <= led && led < forwardBeamPositions[i] + beamWidth) {
       hasForwardBeam = true;
+      if (led < flashWidth) {
+        isFiring = true;
+      }
       break;
     }
   }
   for (int i = 0; i < numBackwardBeams; i++) {
     if (backwardBeamPositions[i] <= led && led < backwardBeamPositions[i] + beamWidth) {
-      if (hasForwardBeam) {
-        return DGREEN;
+      hasBackwardBeam = true;
+      if (led > numLedsPerStrip - flashWidth - 1) {
+        isFiring = true;
       }
-      else {
-        return DDGREEN;
-      }
+      break;
     }
   }
 
+  if (hasForwardBeam && hasBackwardBeam) {
+    return combinedBeamColor;
+  }
   if (hasForwardBeam) {
-    return DDGREEN;
+    if (isFiring) {
+      return forwardHitColor;
+    }
+    return forwardBeamColor;
+  }
+  if (hasBackwardBeam) {
+    if (isFiring) {
+      return backwardHitColor;
+    }
+    return backwardBeamColor;
   }
 
   return BLACK;
